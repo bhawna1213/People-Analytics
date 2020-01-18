@@ -1,0 +1,442 @@
+---
+title: "People Analytics"
+author: "Bhawna Gupta"
+date: "11/10/2019"
+output: pdf_document
+---
+
+So what is Attrition and what determines it?
+Attrition: It is basically the turnover rate of employees inside an organization.
+
+This can happen for many reasons:
+
+Employees looking for better opportunities.
+A negative working environment.
+Gender discrepancy.
+Bad management.
+Sickness of an employee (or even death).
+Excessive working hours.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(radiant)
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+install.packages("corrplot")
+library(corrplot)
+install.packages("ggcorrplot")
+library("ggcorrplot")
+install.packages("GGally")
+library(GGally)
+```
+
+## Reading data
+```{r,results='hide'}
+attrition_data <- read.csv("WA_Fn-UseC_-HR-Employee-Attrition.csv")
+attrition_data
+```
+
+# Exploratory data analysis
+
+## 1.Checking for NA in the dataset
+```{r}
+any(is.na(attrition_data))
+```
+There are no null values in the dataset.
+
+```{r}
+summary(attrition_data)
+```
+
+## 2. Checking number of distinct employees in the dataset
+```{r}
+attrition_data %>% summarize(count=n())
+```
+There are 1470 employees in IBM about whom we have information.
+
+Summary:
+Dataset Structure: 1470 observations (rows), 35 features (variables)
+Missing Data: Luckily for us, there is no missing data! this will make it easier to work with the dataset.
+Data Type: We only have two datatypes in this dataset: factors and integers
+Label: Attrition is the label in our dataset and we would like to find out why employees are leaving the organization.
+Imbalanced dataset: 1237 (84% of cases) employees did not leave the organization while 237 (16% of cases) did leave the organization making our dataset to be considered imbalanced since more people stay in the organization than they actually leave.
+
+We will start with checking some of the variables that might lead to Attrition. For that, we first want to look how many workers have left the organization.
+```{r}
+ggplot(data=attrition_data, aes(x=factor(attrition_data$Attrition))) +
+  geom_histogram(stat = "count",binwidth = 0.1,color="blue",fill="cyan") + 
+  labs(title="Attrition histogram plot",x="Number of people left IBM", y = "Count")
+
+ggplot(attrition_data, aes(factor(Attrition), y = ..prop.., group = 1)) +
+  geom_bar() +
+  geom_text(stat = "count", aes(label = round(..prop.., 2), y = ..prop.. +0.02)) +
+  labs(title="Attrition histogram plot",x="Number of people left IBM", y = "Proportion")
+```
+
+We see that 16% of the total employees left the organization. There might be a presence of imbalance in the dataset, and we need to consider this for our predictive modelling in future. For now, let's just focus on the variables that are main reasons for attrition.
+
+## Exploratory data analysis on Attrition
+We want to have a basic check on reasons for attrition.
+Variables like gender, job satisfaction, age, salaries, departments, etc.
+
+### 1. Gender
+```{r}
+ggplot(attrition_data, aes(factor(Gender), y = ..prop.., group = 1)) +
+  geom_bar() +
+  geom_text(stat = "count", aes(label = round(..prop.., 2), y = ..prop.. +0.02)) +
+  labs(title="Attrition histogram plot",x="Number of employees in each gender", y = "Proportion")
+```
+
+```{r}
+Age_by_gender <- attrition_data %>% group_by(Gender) %>% summarize(avg_age=mean(Age))
+Age_by_gender
+```
+Around 60% of the total employees at IBM are males and have an average age of 36.65.
+
+Job Satisfaction by Gender
+
+```{r}
+Job_by_gender <- attrition_data %>% group_by(Attrition,Gender) %>% summarize(avg_jobsats=mean(JobSatisfaction),min_jobsats=min(JobSatisfaction),max_jobstats=max(JobSatisfaction))
+Job_by_gender
+```
+Overall, males have slightly more job satisfaction than females, irrespective of attrition status.
+
+Monthly Income by Gender
+```{r}
+ggplot(attrition_data, aes(x=Gender, y=MonthlyIncome, color=Gender, fill=Gender)) + geom_boxplot() + 
+scale_fill_manual(values=c("#F5A9F2", "#5882FA")) + scale_color_manual(values=c("#FE2EF7", "#5858FA")) +
+coord_flip() + labs(title="Are there any Gender Disparities in Income?")
+
+```
+
+```{r}
+Income_by_gender <- attrition_data %>% group_by(Attrition,Gender) %>% summarize(avg_income=mean(MonthlyIncome))
+Income_by_gender
+```
+Though there is not much gender disparity in income for males and females, the average salaries is less for people who left as compared to that of people who still are there in the organisation. Hence, income might be one factor for people to leave the organisation. We will deep dive into it more.
+
+Department by Gender
+```{r}
+Dept_by_gender <- attrition_data %>% group_by(Gender,Department,Attrition) %>% summarize(count=n(),mean_salary=mean(MonthlyIncome))
+Dept_by_gender
+```
+```{r}
+ggplot(Dept_by_gender, aes(x=Department,y=count,fill=Gender)) + 
+  geom_bar(stat="identity",position='dodge')
+```
+
+
+```{r}
+ggplot(Dept_by_gender, aes(x=Department,y=count,fill=Gender)) + 
+  geom_bar(stat="identity",position='dodge')+
+  facet_wrap(~Attrition)+
+  scale_fill_brewer(palette = "Set2")+
+  theme_minimal()
+```
+
+ADD EXPLANATION HERE, MAYBE IN TERMS OF PROPORTION??????????????
+
+```{r}
+ggplot(Dept_by_gender, aes(x=Department,y=mean_salary,fill=Gender)) + 
+  geom_bar(stat="identity",position='dodge')+
+  theme_minimal()+
+  scale_fill_brewer(palette = "Set2")+
+  ylab("Average Salary")+
+  facet_wrap(~Attrition)
+```
+
+```{r}
+attrition_data %>%group_by(Department)%>%summarize(attrition_rate=mean(Attrition=="Yes"))%>%ggplot(aes(x=reorder(Department,attrition_rate),y=attrition_rate,fill=Department)) +
+  geom_bar(stat='identity') +
+   theme(axis.text.x=element_text(angle=0,vjust=0.5),legend.position='none',plot.title = element_text(size=12)) +
+  scale_fill_manual(values=c("red","green","brown"))+
+  labs(title="Attrition Rate by Department",x="Department")+
+  theme_minimal()+
+  ylab("Attrition Rate")+
+  scale_fill_brewer(palette = "Set2")
+
+```
+Sales department has the highest attrition rate.
+
+### Exploratory data analysis on Education/ Generation
+We want to have a basic check on the generation of the people leaving the organization because past generations tend to stay longer at the company.
+
+```{r,results='hide'}
+attrition_data
+```
+
+```{r}
+attrition_data %>%group_by(MaritalStatus)%>%summarize(attrition_rate=mean(Attrition=="Yes"))%>%ggplot(aes(x=reorder(MaritalStatus,attrition_rate),y=attrition_rate,group=1)) +
+  geom_line(stat='identity',alpha=0.8,color="red",size=1.5) +
+  geom_point()+ 
+  theme(axis.text.x=element_text(angle=0,vjust=0.8),legend.position='bottom',plot.title = element_text(size=12)) +
+  labs(title="Attrition Rate by Marital Status",x="Marital Status")+
+  ylab("Attrition Rate")+
+  theme_minimal()+
+  scale_color_brewer("Set2")
+```
+
+Attrition rate is more for employees who are singles than married.
+
+```{r}
+cbp1 <- c("#999999", "#E69F00", "#56B4E9", "#009E73",
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7","#FFDB6D")
+
+attrition_data %>%group_by(JobRole)%>%
+  summarize(attrition_rate=mean(Attrition=="Yes"))%>%
+  ggplot(aes(x=reorder(JobRole,attrition_rate),y=attrition_rate,fill=JobRole)) + 
+  geom_bar(stat='identity') + 
+  theme_minimal()+
+  #scale_fill_brewer(palette = "Patl")+
+  scale_fill_manual(values = cbp1)+
+  coord_flip()+
+  theme(axis.text.x=element_text(angle=0,vjust=0.5),legend.position='bottom',plot.title = element_text(size=12)) +
+  labs(title="Attrition Rate by Job Role",x="Job Role",y="Attrition Rate")
+
+```
+Sales representatives, from the Sales department, have the highest attrition rate.
+
+
+```{r}
+ggplot(attrition_data,aes(PerformanceRating,fill=Attrition))+
+  geom_bar(alpha=0.8,position = "dodge")+
+  scale_x_continuous(limits=c(1,5))+
+   theme(axis.text.x=element_text(angle=0,vjust=0.5),legend.position='bottom',plot.title = element_text(size=12)) +
+  scale_fill_manual(values=c("red","green","brown"))+
+  theme_minimal()+
+  scale_fill_brewer(palette = "Set2")+
+  labs(title="Attrition by Performance Rating",x="Performance Rating")
+
+```
+
+Rating has the following levels
+
+1-Unacceptable
+2-Below Average
+3=Acceptable
+4-Above Average
+5-Excellent
+
+
+```{r}
+attrition_data %>%group_by(BusinessTravel)%>%
+  summarize(attrition_rate=mean(Attrition=="Yes"))%>%ggplot(aes(x=reorder(BusinessTravel,attrition_rate),y=attrition_rate,group=1)) +
+  geom_line(alpha=0.5,color="red",size=1.5) + geom_point()+ 
+   theme(axis.text.x=element_text(angle=0,vjust=0.5),legend.position='none',plot.title = element_text(size=12)) +
+  labs(title="Attrition Rate by Business Travel",x="Business Travel")
+
+```
+
+```{r}
+attrition_data %>% group_by(Department)%>%summarize(avg_involvement=mean(JobInvolvement))%>%arrange(avg_involvement)
+
+new_data<-attrition_data %>%mutate(Non_Involved=ifelse(JobInvolvement<=2,1,0))
+emp_summary<-new_data %>% group_by(Department)%>%summarize(percent_Involvement=mean(Non_Involved),
+                     avg_income=mean(MonthlyRate),
+                     avg_year_in_company=mean(YearsAtCompany))
+```
+
+```{r}
+emp_gathered <- emp_summary %>% 
+  gather(percent_Involvement,avg_income,avg_year_in_company,key="measure",value="value") 
+emp_gathered%>%
+ggplot(aes(measure, value, fill = Department)) +
+  geom_col(position = "dodge",alpha=0.5) +
+  facet_wrap(~ measure, scales = "free")+
+  scale_fill_manual(values=c("red","green","blue"))
+```
+
+# We want to see if young people have worked in more companies than the older generation
+# This might prove that the millenials tend to be more picky with regards to jobs than the older generation.
+
+
+
+```{r}
+## by age
+age_group_data<-attrition_data %>%
+  mutate(age_group=cut(Age,breaks=c(0,23,42,54,73)))
+```
+
+```{r}
+#ggplot(age_group_data,aes(x=age_group,fill=Attrition)) + geom_bar(position='dodge') + xlab('Age Group')
+
+age_group_data %>%
+  mutate(age_group = as.factor(age_group),
+         Attrition = as.factor(Attrition)) %>%
+  group_by(age_group, Attrition) %>%
+  summarise(count_age = n()) %>%
+  group_by(age_group) %>%
+  mutate(count_att = sum(count_age)) %>%
+  mutate(percent = count_age / count_att * 100) %>%
+  ggplot() +
+  geom_bar(aes(x = age_group,
+               y = count_att, 
+               group = Attrition,
+               fill = Attrition), 
+           stat = "identity") +
+  theme_minimal()+
+  scale_fill_brewer(palette = "Set2")+
+  geom_text(aes(x = age_group,
+                y = count_att,
+                label = sprintf("%0.1f%%", percent)),
+            position = position_stack(vjust = 0.5))+
+  labs(x="Age Group",y="Attribution Count")
+```
+
+We created the age groups as Gen Z, Gen Y, Gen X and Baby Boomers.
+Age-group 23-42 (Gen Y) has the highest Attrition rate as they opt to look more easy for other jobs that satisfy the needs whereas Boomers are approximating retirement and could be one of the reasons why the attrition rate of boomers is similar.
+
+
+```{r}
+age_group_data$Educational_Levels <-  ifelse(age_group_data$Education == 1, "Without College D.",
+                            ifelse(age_group_data$Education == 2 , "College D.",
+                                  ifelse(age_group_data$Education == 3, "Bachelors D.",
+                                        ifelse(age_group_data$Education == 4, "Masters D.", "Phd D."))))
+
+
+age_group_data  %>% group_by(Educational_Levels, Attrition) %>% summarize(n=n()) %>% 
+ggplot(aes(x=fct_reorder(Educational_Levels,n), y=n, fill=Attrition, color=Attrition)) +
+  geom_bar(stat="identity") + 
+  facet_wrap(~Attrition) + 
+  coord_flip() + 
+  scale_fill_manual(values=c("#2EF688", "#F63A2E")) + 
+  scale_color_manual(values=c("#09C873","#DD1509")) + 
+  geom_label(aes(label=n, fill = Attrition), colour = "white", fontface = "italic") + 
+  labs(x="", y="Number of Employees", title="Attrition by Educational Level") 
+
+
+age_group_data %>% group_by(Educational_Levels, Attrition) %>% summarize(n=n()) %>% mutate(pct=round(prop.table(n),2) * 100) %>% arrange(desc(pct)) %>% ggplot(aes(x=fct_reorder(Educational_Levels,pct), y=pct, fill=Attrition, color=Attrition)) +
+  geom_bar(stat="identity") +
+  facet_wrap(~Attrition) + 
+  coord_flip() + 
+  geom_label(aes(label=paste0(pct, "%"), fill = Attrition), colour = "white", fontface = "italic") + 
+  #scale_fill_manual(values=c("#2EF688", "#F63A2E")) +
+  #scale_color_manual(values=c("#09C873","#DD1509")) +
+  theme_minimal()+
+  scale_fill_brewer(palette = "Set2")+
+  labs(x="", y="Number of Employees (%)", title="Attrition by Educational Level", subtitle="Percentage (%) by Employee") + 
+  theme(legend.position="none", plot.title=element_text(hjust=0.5, size=14), plot.subtitle=element_text(hjust=0.5, size=12, face="italic"))
+```
+
+This goes hand in hand with the previous statement, as bachelors are the ones showing the highest level of attrition which makes sense since Millenials create the highest turnover rate inside the organization.
+
+# income and Attrition
+
+# What is the average monthly income by department?
+```{r}
+custom.col <- c("#FFDB6D","#56B4E9")
+attrition_data %>% 
+  select(MonthlyIncome,Department,Attrition) %>% 
+  group_by(Department,Attrition) %>% 
+  summarise(ave_monthly_income = mean(MonthlyIncome),num_people=n()) %>% 
+  ggplot(aes(x=Department,y=ave_monthly_income,fill=Attrition))+geom_bar(stat='identity')+
+  facet_wrap(~Attrition)+
+  theme_minimal()+
+  labs(
+    title = 'Average Monthly Income across Department',
+    y='Average Monthly Income'
+  )+
+  scale_fill_manual(values = custom.col)
+  
+```
+In this graph we can see that for those who quit, average monthly income are obviously lower than that of who don't quit. The greatest gap comes form Human Resources Department, in which people who do not quit get the highest average income across departments while people who quit get the lowerest income across department. 
+
+# Are there any significant differences between individuals who quit and didn't quit?
+```{r}
+custom.col <- c("#FFDB6D","#56B4E9")
+attrition_data %>% 
+  select(MonthlyIncome,Attrition) %>% 
+  group_by(Attrition) %>% 
+  summarise(ave_income=mean(MonthlyIncome)) %>% 
+  ggplot(aes(x=Attrition,y=ave_income,fill=Attrition))+
+  geom_bar(stat = "identity")+scale_fill_brewer(palette = "")+
+  theme_minimal()+  scale_fill_manual(values = custom.col)+
+  labs(
+    title = "Attrition & Average Monthly Income ",
+    y = "Average Monthly Income"
+  )
+  
+```
+
+```{r}
+income_attr<- attrition_data %>% 
+  select(MonthlyIncome,Attrition) %>% 
+  filter(Attrition=='Yes') 
+
+income_not_attr<- attrition_data %>% 
+  select(MonthlyIncome,Attrition) %>% 
+  filter(Attrition=='No') 
+
+t.test(income_attr$MonthlyIncome,income_not_attr$MonthlyIncome)
+```
+Accroding to the plot, the average montly income of those who quit is 4787 while that of those who do not quit is 6833. We also run a t-test and find that the difference is statistically significant. 
+
+# Are there significant changes in the level of income by Job Satisfaction? Are individuals with a lower satisfaction getting much less income than the ones who are more satisfied?
+```{r}
+attrition_data %>% 
+  select(JobSatisfaction,MonthlyIncome,Attrition) %>% 
+  group_by(JobSatisfaction,Attrition) %>% 
+  summarise(med_income=median(MonthlyIncome)) %>% 
+  ggplot(aes(x=as.factor(JobSatisfaction),y=med_income,color=Attrition))+
+  geom_point(size=3)+
+  geom_segment(aes(x=JobSatisfaction, 
+                   xend=JobSatisfaction, 
+                   y=0, 
+                   yend=med_income)) +facet_wrap(~Attrition)+
+  coord_flip()+
+  theme(plot.title=element_text(hjust=0.5),strip.background = element_blank())+
+  geom_text(aes(x=JobSatisfaction, y=0.5, label= paste0("$ ", round(med_income,2))),
+            hjust=-0.5, vjust=-0.5, size=4, 
+            colour="black", fontface="italic",
+         angle=360)+
+  scale_color_brewer(palette = "Set2")+
+  theme_minimal()+
+  labs(
+    title = "Attrition, Average Monthly Income and Job Satisfaction",
+    y = "Average Monthly Income",
+    x = "Job Satisfaction level"
+  )
+```
+
+# Do employees with a higher performance rating earn more than with a lower performance rating? Is the difference significant by Attrition status?
+```{r}
+attrition_data %>% 
+  select(PerformanceRating,MonthlyIncome,Attrition) %>% 
+  group_by(PerformanceRating,Attrition) %>% 
+  summarise(mean_income=mean(MonthlyIncome)) %>% 
+  ggplot(aes(x=as.factor(PerformanceRating),y=mean_income,fill=Attrition))+
+  geom_bar(stat='identity',position='dodge')+
+  scale_color_brewer(palette = "Set2")+
+  theme_minimal()+
+  labs(
+    title = "Attrition, Average Monthly Income and PerformanceRating",
+    y = "Average Monthly Income",
+    x = "PerformanceRating level"
+  )
+```
+
+
+
+
+Finding Correlation
+```{r}
+options(repr.plot.width=10, repr.plot.height=7) 
+
+nums <- select_if(attrition_data, is.numeric)
+
+corr <- round(cor(nums), 1)
+
+ggcorrplot(corr, 
+           type = "lower", 
+           lab = TRUE, 
+           lab_size = 3, 
+           method="square", 
+           colors = c("tomato2", "white", "#01A9DB"), 
+           title="Correlogram Employee Attritions", 
+           ggtheme=theme_minimal())
+```
+
+
+
